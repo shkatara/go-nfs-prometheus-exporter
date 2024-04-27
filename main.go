@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
+	"path/filepath"
+	"time"
 )
 
 func errorcheck(e error) {
@@ -13,24 +14,39 @@ func errorcheck(e error) {
 	}
 }
 
-func lsDir(path string) []string {
+func findDir(path string) []string {
 	directories := []string{}
 	entries, err := os.ReadDir(path)
 	errorcheck(err)
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if (entry.IsDir()) && (entry.Name() != ".git") {
 			directories = append(directories, entry.Name())
 		}
 	}
 	return directories
 }
 
+func dirSize(dirpath string) int64 {
+	var totalSize int64
+	err := filepath.Walk(dirpath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	errorcheck(err)
+	return totalSize
+}
+
 func main() {
-	dir := lsDir("./")
-	for _, data := range dir {
-		run, _ := exec.Command("du", "-xh", data).Output()
-		//output := string(run[3:4])
-		output := string(run[:4])
-		fmt.Println(output)
+	var target string = "./"
+	dir := findDir(target)
+	for {
+		time.Sleep(5 * time.Second)
+		for _, data := range dir {
+			size := dirSize(data)
+			fmt.Println(size)
+		}
 	}
+
 }
