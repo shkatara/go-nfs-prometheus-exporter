@@ -12,15 +12,18 @@ import (
 )
 
 var (
-	gauge = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "dir_size_bytes",
-		Help:        "The size of the directory in bytes",
-		ConstLabels: prometheus.Labels{"job": "go-nfs-exporter"},
-	})
+	gauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dir_size_bytes",
+			Help: "Directory size in bytes.",
+		},
+		[]string{"persistentvolumes"})
 )
 
+var target string = "./"
+
 func main() {
-	var target string = "./"
+	fmt.Println("Starting server...")
 	http.Handle("/metrics", promhttp.Handler())
 	go http.ListenAndServe(":8000", nil)
 	dir := utils.FindDir(target)
@@ -28,8 +31,7 @@ func main() {
 		time.Sleep(5 * time.Second)
 		for _, data := range dir {
 			size := utils.DirSize(data)
-			gauge.Set(float64(size))
-			fmt.Println(size)
+			gauge.With(prometheus.Labels{"persistentvolumes": data}).Set(float64(size))
 		}
 	}
 }
