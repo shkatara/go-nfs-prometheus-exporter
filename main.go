@@ -26,17 +26,20 @@ var (
 )
 
 func main() {
-	flag.StringVar(&target, "target-dir", "./", "Directory to scrape metrics from")
-	fmt.Println("Reading from", target, "and exposing metrics at 127.0.0.1:8000/metrics")
+	flag.StringVar(&target, "target-dir", target, "Directory to scrape metrics from")
 	flag.Parse()
+	fmt.Println("Reading from", target, "and exposing metrics at 127.0.0.1:8000/metrics")
+
 	http.Handle("/metrics", promhttp.Handler())
-	go http.ListenAndServe(":8000", nil)
 	dir := utils.FindDir(target)
+	go http.ListenAndServe(":8000", nil)
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(30 * time.Second)
 		for _, data := range dir {
-			size := utils.DirSize(data)
-			gauge.With(prometheus.Labels{"persistentvolume": data}).Set(float64(size))
+			fmt.Println("Scraping data from", data)
+			size := utils.DirSize(target, data)
+			fmt.Println(data, ":", size, "bytes")
+			gauge.With(prometheus.Labels{"persistentvolume": data}).Set(size)
 		}
 	}
 }

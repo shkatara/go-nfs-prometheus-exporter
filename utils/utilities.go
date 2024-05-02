@@ -24,11 +24,12 @@ func FindDir(path string) []string {
 	return directories
 }
 
-func DirSize(dirpath string) int64 {
-	var totalSize int64
-	err := filepath.Walk(dirpath, func(path string, info os.FileInfo, err error) error {
+func DirSize(target string, dirpath string) float64 {
+	var totalSize float64
+	newDirPath := target + "/" + dirpath
+	err := filepath.Walk(newDirPath, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
-			totalSize += info.Size()
+			totalSize += float64(info.Size())
 		}
 		return nil
 	})
