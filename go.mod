@@ -1,4 +1,4 @@
-module example.com/nfs-exporter
+module nfs-exporter
 
 go 1.22.1
 

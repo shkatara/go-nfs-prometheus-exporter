@@ -1,14 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	"log"
-	"net"
 	"net/http"
-	"time"
+	"os"
+	"os/signal"
 
-	"example.com/nfs-exporter/utils"
+	"nfs-exporter/exporter"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -24,37 +25,55 @@ var (
 )
 
 var (
-	target string
+	target                string
+	listenAddress         string
+	listenPort            int
+	includeDotDirectories bool
 )
 
-func GetOutboundIP() net.IP {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		log.Fatal(err)
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	return localAddr.IP
 }
 
-func main() {
-	flag.StringVar(&target, "target-dir", target, "Directory to scrape metrics from")
+func run() error {
+	ctx := context.Background()
+
+	flag.StringVar(&target, "target-dir", "", "Directory to scrape metrics from")
+	flag.StringVar(&listenAddress, "listen-address", "0.0.0.0", "Listen address")
+	flag.IntVar(&listenPort, "listen-port", 8000, "Listen port")
+	flag.BoolVar(&includeDotDirectories, "include-dot-dirs", false, "Include directories starting with a dot")
+
 	flag.Parse()
-	outboundIP := GetOutboundIP()
-	listenAddress := fmt.Sprintf("%s:8000", outboundIP)
-	fmt.Print(fmt.Sprintf("Reading from %s and serving metrics at %s:8000/metrics", target, outboundIP))
-	http.Handle("/metrics", promhttp.Handler())
-	dir := utils.FindDir(target)
-	go http.ListenAndServe(listenAddress, nil)
-	for {
-		time.Sleep(30 * time.Second)
-		for _, data := range dir {
-			fmt.Println("Scraping data from", data)
-			size := utils.DirSize(target, data)
-			fmt.Println(data, ":", size, "bytes")
-			gauge.With(prometheus.Labels{"persistentvolume": data}).Set(size)
-		}
+
+	opts := exporter.ExporterOptions{
+		Target:                target,
+		IncludeDotDirectories: includeDotDirectories,
 	}
+
+	listenAddress := fmt.Sprintf("%s:%v", listenAddress, listenPort)
+	fmt.Printf("Reading from %s and serving metrics at %s/metrics", target, listenAddress)
+
+	http.Handle("/metrics", promhttp.Handler())
+
+	// Remove this because if a new persistent volume is added, it will not be scraped
+	// since we discover only at the start of the program with this approach
+	// dir := utils.FindDir(target)
+
+	err := http.ListenAndServe(listenAddress, nil)
+	if err != nil {
+		return err
+	}
+
+	// We start this asynchronously so that we can serve metrics in the background
+	go exporter.StartExporter(ctx, opts, gauge)
+
+	// Block and wait for interrupt.
+	sigch := make(chan os.Signal, 1)
+	signal.Notify(sigch, os.Interrupt)
+	<-sigch
+
+	return nil
 }
