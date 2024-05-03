@@ -14,12 +14,13 @@ import (
 type ExporterOptions struct {
 	Target                string
 	IncludeDotDirectories bool
+	Interval              time.Duration
 }
 
 func StartExporter(ctx context.Context, opts ExporterOptions, gauge *prometheus.GaugeVec) {
 	for {
 		select {
-		case <-time.After(30 * time.Second):
+		case <-time.After(opts.Interval):
 			directories, err := listDirectories(opts)
 			if err != nil {
 				fmt.Printf("Could not list directories: %v", err)

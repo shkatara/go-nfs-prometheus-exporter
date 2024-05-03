@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
+	"time"
 
 	"nfs-exporter/exporter"
 
@@ -29,6 +29,7 @@ var (
 	listenAddress         string
 	listenPort            int
 	includeDotDirectories bool
+	interval              string
 )
 
 func main() {
@@ -41,39 +42,32 @@ func main() {
 func run() error {
 	ctx := context.Background()
 
-	flag.StringVar(&target, "target-dir", "", "Directory to scrape metrics from")
+	flag.StringVar(&target, "target-dir", "/Users/jmotz/Code/Github/", "Directory to scrape metrics from")
 	flag.StringVar(&listenAddress, "listen-address", "0.0.0.0", "Listen address")
 	flag.IntVar(&listenPort, "listen-port", 8000, "Listen port")
 	flag.BoolVar(&includeDotDirectories, "include-dot-dirs", false, "Include directories starting with a dot")
+	flag.StringVar(&interval, "interval", "30s", "Interval to scrape directories (e.g. 30s, 1m, 1h)")
 
 	flag.Parse()
+
+	parsedInterval, err := time.ParseDuration(interval)
+	if err != nil {
+		fmt.Printf("Could not parse interval: %v", err)
+		return err
+	}
 
 	opts := exporter.ExporterOptions{
 		Target:                target,
 		IncludeDotDirectories: includeDotDirectories,
-	}
-
-	listenAddress := fmt.Sprintf("%s:%v", listenAddress, listenPort)
-	fmt.Printf("Reading from %s and serving metrics at %s/metrics", target, listenAddress)
-
-	http.Handle("/metrics", promhttp.Handler())
-
-	// Remove this because if a new persistent volume is added, it will not be scraped
-	// since we discover only at the start of the program with this approach
-	// dir := utils.FindDir(target)
-
-	err := http.ListenAndServe(listenAddress, nil)
-	if err != nil {
-		return err
+		Interval:              parsedInterval,
 	}
 
 	// We start this asynchronously so that we can serve metrics in the background
 	go exporter.StartExporter(ctx, opts, gauge)
 
-	// Block and wait for interrupt.
-	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, os.Interrupt)
-	<-sigch
-
-	return nil
+	// Start Prometheus metrics server
+	listenAddress := fmt.Sprintf("%s:%v", listenAddress, listenPort)
+	fmt.Printf("Reading from %s and serving metrics at %s/metrics", target, listenAddress)
+	http.Handle("/metrics", promhttp.Handler())
+	return http.ListenAndServe(listenAddress, nil)
 }
