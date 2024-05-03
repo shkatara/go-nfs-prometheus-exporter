@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -25,14 +27,28 @@ var (
 	target string
 )
 
+func GetOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP
+}
+
 func main() {
 	flag.StringVar(&target, "target-dir", target, "Directory to scrape metrics from")
 	flag.Parse()
-	fmt.Println("Reading from", target, "and exposing metrics at 127.0.0.1:8000/metrics")
-
+	outboundIP := GetOutboundIP()
+	listenAddress := fmt.Sprintf("%s:8000", outboundIP)
+	debugStatement := fmt.Sprintf("Reading from %s and serving metrics at %s:8000/metrics", target, outboundIP)
+	fmt.Println(debugStatement)
 	http.Handle("/metrics", promhttp.Handler())
 	dir := utils.FindDir(target)
-	go http.ListenAndServe(":8000", nil)
+	go http.ListenAndServe(listenAddress, nil)
 	for {
 		time.Sleep(30 * time.Second)
 		for _, data := range dir {
